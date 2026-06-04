@@ -1,0 +1,22 @@
+# Build outputs
+/dist/
+/ai-usage-monitor.exe
+*.exe
+
+# Runtime files
+/config.json
+/stats.json
+/stats.json.tmp
+/stats.json.bak
+
+# Nim generated files
+/nimcache/
+/.nimcache/
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+.vscode/
+.idea/

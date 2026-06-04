@@ -1,0 +1,10 @@
+{
+  "refreshInterval": 1000,
+  "alwaysOnTop": true,
+  "clickThrough": false,
+  "opacity": 0.85,
+  "windowX": -1,
+  "windowY": -1,
+  "compactWindowX": -1,
+  "codexSessionDir": ""
+}

@@ -1,0 +1,6 @@
+* text=auto
+*.nim text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.nimble text eol=lf
+*.bat text eol=crlf
