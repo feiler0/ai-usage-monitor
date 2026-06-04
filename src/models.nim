@@ -22,6 +22,7 @@ type
   AppConfig* = object
     refreshInterval*: int
     alwaysOnTop*: bool
+    respectFullscreenWindows*: bool
     clickThrough*: bool
     opacity*: float
     windowX*: int

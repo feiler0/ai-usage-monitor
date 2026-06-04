@@ -1,6 +1,7 @@
 {
   "refreshInterval": 1000,
-  "alwaysOnTop": true,
+  "alwaysOnTop": false,
+  "respectFullscreenWindows": true,
   "clickThrough": false,
   "opacity": 0.85,
   "windowX": -1,

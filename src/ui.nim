@@ -58,6 +58,8 @@ type
     idleTrimTicks*: int
     lastClaudeHash*: int
     lastCodexHash*: int
+    fullscreenForeground*: bool
+    hiddenForFullscreen*: bool
 
 # 全局 UI 上下文
 var gUi: UiContext
@@ -306,15 +308,51 @@ proc paintWindow(hwnd: HWND) =
   DeleteDC(memDc)
   EndPaint(hwnd, ps.addr)
 
+proc foregroundIsFullscreen(hwnd: HWND): bool =
+  let fg = GetForegroundWindow()
+  if fg == 0 or fg == hwnd or IsWindowVisible(fg) == 0:
+    return false
+  var fgRc: RECT
+  if GetWindowRect(fg, fgRc.addr) == 0:
+    return false
+  let mon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST)
+  var info: MONITORINFO
+  info.cbSize = DWORD(sizeof(MONITORINFO))
+  if GetMonitorInfoW(mon, info.addr) == 0:
+    return false
+  let mr = info.rcMonitor
+  result = fgRc.left <= mr.left and fgRc.top <= mr.top and
+    fgRc.right >= mr.right and fgRc.bottom >= mr.bottom
+
+proc windowInsertAfter(config: AppConfig): HWND =
+  if config.alwaysOnTop and (gUi.isNil or not gUi.fullscreenForeground):
+    HWND_TOPMOST
+  else:
+    HWND_NOTOPMOST
+
+proc refreshWindowLevelPolicy(hwnd: HWND) =
+  if gUi.isNil:
+    return
+  let nextFullscreen = gUi.monitor.config.respectFullscreenWindows and foregroundIsFullscreen(hwnd)
+  if nextFullscreen != gUi.fullscreenForeground:
+    gUi.fullscreenForeground = nextFullscreen
+    SetWindowPos(hwnd, windowInsertAfter(gUi.monitor.config), 0, 0, 0, 0,
+      SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE)
+  if nextFullscreen:
+    if IsWindowVisible(hwnd) != 0:
+      gUi.hiddenForFullscreen = true
+      ShowWindow(hwnd, SW_HIDE)
+  elif gUi.hiddenForFullscreen:
+    gUi.hiddenForFullscreen = false
+    ShowWindow(hwnd, SW_SHOWNA)
+
 proc updateWindowStyle(hwnd: HWND, config: AppConfig) =
   ## 更新窗口样式（置顶、透明度、穿透）
   var exStyle = GetWindowLongW(hwnd, GWL_EXSTYLE)
 
   # 置顶
-  if config.alwaysOnTop:
-    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE)
-  else:
-    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE)
+  SetWindowPos(hwnd, windowInsertAfter(config), 0, 0, 0, 0,
+    SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE)
 
   # 透明度
   let alpha = clamp(int32(config.opacity * 255), 26, 255)
@@ -372,7 +410,7 @@ proc applyWindowMode(hwnd: HWND) =
     x = pt.x
     y = pt.y
 
-  SetWindowPos(hwnd, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE)
+  SetWindowPos(hwnd, windowInsertAfter(gUi.monitor.config), x, y, width, height, SWP_NOACTIVATE)
   var r: RECT
   GetClientRect(hwnd, r.addr)
   let hRgn = CreateRoundRectRgn(0, 0, r.right + 1, r.bottom + 1, 12, 12)
@@ -437,6 +475,7 @@ proc WndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.s
   of WM_TIMER:
     if wParam == 1:
       reloadConfigIfChanged(hwnd)
+      refreshWindowLevelPolicy(hwnd)
       refreshAll(gUi.monitor)
       let claudeHash = dataHash(gUi.monitor.claudeData)
       let codexHash = dataHash(gUi.monitor.codexData)
@@ -494,7 +533,8 @@ proc WndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.s
       var newX = pt.x - gUi.dragOffsetX
       if newX < work.left: newX = work.left
       if newX > work.right - COMPACT_WIDTH: newX = work.right - COMPACT_WIDTH
-      SetWindowPos(hwnd, HWND_TOPMOST, newX, compactY(), COMPACT_WIDTH, COMPACT_HEIGHT, SWP_NOACTIVATE)
+      SetWindowPos(hwnd, windowInsertAfter(gUi.monitor.config), newX, compactY(),
+        COMPACT_WIDTH, COMPACT_HEIGHT, SWP_NOACTIVATE)
       return 0
 
   of WM_LBUTTONUP:
@@ -573,7 +613,7 @@ proc createWindow*(monitor: Monitor): HWND =
 
   let height: int32 = calcWindowHeight()
 
-  let exStyle: DWORD = WS_EX_LAYERED or WS_EX_TOPMOST or WS_EX_TOOLWINDOW
+  let exStyle: DWORD = WS_EX_LAYERED or WS_EX_TOOLWINDOW
   result = CreateWindowExW(
     exStyle,
     WINDOW_CLASS, WINDOW_TITLE,
