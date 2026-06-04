@@ -6,15 +6,9 @@ import sources/codex
 when defined(windows):
   import winim/lean
 
-const
-  WM_TRAY_ICON = 0x8002
-
 proc messageLoop(hwnd: HWND): void =
   var msg: MSG
   while GetMessageW(msg.addr, 0, 0, 0) != 0:
-    if msg.message == WM_TRAY_ICON and msg.lParam == WM_RBUTTONUP:
-      showTrayMenu(hwnd)
-      continue
     TranslateMessage(msg.addr)
     DispatchMessageW(msg.addr)
 

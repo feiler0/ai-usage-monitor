@@ -7,9 +7,11 @@ import monitor
 import config
 import filewatch
 import memoryutil
+import tray
 
 when defined(windows):
   import winim/lean
+  import winim/inc/shellapi
 
 const
   WINDOW_CLASS = "AIUsageMonitor"
@@ -500,7 +502,15 @@ proc WndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.s
     return 0
 
   of WM_TRAY_ICON:
-    if lParam == WM_LBUTTONUP or lParam == WM_LBUTTONDBLCLK:
+    # V4 行为下 lParam = MAKELPARAM(event, iconID), 需要取 LOWORD
+    let event = cast[int](lParam) and 0xFFFF
+    # 右键: 显示菜单
+    if event == WM_RBUTTONDOWN or event == WM_RBUTTONUP or
+       event == WM_CONTEXTMENU or event == NIN_KEYSELECT:
+      showTrayMenu(hwnd)
+    # 左键: 切换窗口显示
+    elif event == WM_LBUTTONUP or event == WM_LBUTTONDBLCLK or
+         event == NIN_SELECT:
       if IsWindowVisible(hwnd) != 0:
         ShowWindow(hwnd, SW_HIDE)
       else:

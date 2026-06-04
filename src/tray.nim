@@ -10,6 +10,15 @@ const
   RUN_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
   RUN_VALUE = "AIUsageMonitor"
 
+# 托盘图标固定 GUID（Windows 7+ 推荐使用 GUID 标识图标）
+let TRAY_GUID = block:
+  var g: GUID
+  g.Data1 = cast[int32](0xE8F4A2B1'u32)
+  g.Data2 = 0x3D7C'u16
+  g.Data3 = 0x5A9E'u16
+  g.Data4 = [0x8F'u8, 0x2B'u8, 0x6C'u8, 0xD1'u8, 0x4E'u8, 0x7A'u8, 0x9F'u8, 0x35'u8]
+  g
+
 type
   TrayIcon* = ref object
     hwnd*: HWND
@@ -126,8 +135,9 @@ proc createTrayIcon*(hwnd: HWND): bool =
   nid.cbSize = cast[DWORD](sizeof(NOTIFYICONDATAW))
   nid.hWnd = hwnd
   nid.uID = TRAY_ID
-  nid.uFlags = cast[UINT](NIF_MESSAGE or NIF_ICON or NIF_TIP)
+  nid.uFlags = cast[UINT](NIF_MESSAGE or NIF_ICON or NIF_TIP or NIF_GUID)
   nid.uCallbackMessage = WM_TRAY_ICON
+  nid.guidItem = TRAY_GUID
   nid.hIcon = createMonitorIcon()
   if nid.hIcon == 0:
     nid.hIcon = LoadIconW(cast[HINSTANCE](0), IDI_APPLICATION)
@@ -136,6 +146,15 @@ proc createTrayIcon*(hwnd: HWND): bool =
   result = Shell_NotifyIconW(NIM_ADD, nid.addr) != 0
   if result:
     gTray = TrayIcon(hwnd: hwnd, hIcon: nid.hIcon, visible: true)
+    # 设置 V4 通知行为：右键→WM_CONTEXTMENU，左键→NIN_SELECT
+    var verNid: NOTIFYICONDATAW
+    verNid.cbSize = cast[DWORD](sizeof(NOTIFYICONDATAW))
+    verNid.hWnd = hwnd
+    verNid.uID = TRAY_ID
+    verNid.guidItem = TRAY_GUID
+    verNid.uFlags = NIF_GUID
+    verNid.uVersion = NOTIFYICON_VERSION_4
+    discard Shell_NotifyIconW(NIM_SETVERSION, verNid.addr)
   elif nid.hIcon != 0:
     DestroyIcon(nid.hIcon)
 
@@ -173,6 +192,8 @@ proc removeTrayIcon*() =
     nid.cbSize = cast[DWORD](sizeof(NOTIFYICONDATAW))
     nid.hWnd = gTray.hwnd
     nid.uID = TRAY_ID
+    nid.guidItem = TRAY_GUID
+    nid.uFlags = NIF_GUID
     discard Shell_NotifyIconW(NIM_DELETE, nid.addr)
     if gTray.hIcon != 0:
       DestroyIcon(gTray.hIcon)
