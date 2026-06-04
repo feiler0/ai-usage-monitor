@@ -106,14 +106,12 @@ proc parseCodexTokenCount*(jsonlPath: string): CodexTokenInfo =
       if line.contains("\"token_count\""):
         lastTokenLine = line
     if lastTokenLine.len > 0:
-      let totalPos = lastTokenLine.find("\"total_token_usage\"")
-      if totalPos >= 0:
-        let totalPart = lastTokenLine[totalPos .. ^1]
+      let totalPart = getJsonObject(lastTokenLine, "total_token_usage")
+      if totalPart.len > 0:
         result.cachedInputTokens = getJsonInt64(totalPart, "cached_input_tokens")
         result.totalTokens = getJsonInt64(totalPart, "total_tokens")
-      let lastPos = lastTokenLine.find("\"last_token_usage\"")
-      if lastPos >= 0:
-        let lastPart = lastTokenLine[lastPos .. ^1]
+      let lastPart = getJsonObject(lastTokenLine, "last_token_usage")
+      if lastPart.len > 0:
         result.lastCachedInputTokens = getJsonInt64(lastPart, "cached_input_tokens")
         result.lastTotalTokens = getJsonInt64(lastPart, "total_tokens")
   except:

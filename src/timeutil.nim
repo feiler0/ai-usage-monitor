@@ -30,7 +30,9 @@ proc nowUnixMs*(): int64 =
   when defined(windows):
     var ft: FILETIME
     GetSystemTimeAsFileTime(ft.addr)
-    let ticks = (uint64(ft.dwHighDateTime) shl 32) or uint64(ft.dwLowDateTime)
+    let high = uint64(cast[uint32](ft.dwHighDateTime))
+    let low = uint64(cast[uint32](ft.dwLowDateTime))
+    let ticks = (high shl 32) or low
     result = int64(ticks div 10_000'u64) - 11_644_473_600_000'i64
   else:
     result = 0

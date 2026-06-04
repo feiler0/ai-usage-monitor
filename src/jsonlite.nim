@@ -102,3 +102,29 @@ proc getJsonFloat*(s, key: string, default = 0.0): float =
     result = parseFloat(s[start ..< pos])
   except:
     result = default
+
+proc getJsonObject*(s, key: string): string =
+  var pos = findValueStart(s, key)
+  if pos < 0 or pos >= s.len or s[pos] != '{':
+    return ""
+  let start = pos
+  var depth = 0
+  var inString = false
+  var escaped = false
+  while pos < s.len:
+    let ch = s[pos]
+    if escaped:
+      escaped = false
+    elif ch == '\\':
+      escaped = true
+    elif ch == '"':
+      inString = not inString
+    elif not inString:
+      if ch == '{':
+        inc depth
+      elif ch == '}':
+        dec depth
+        if depth == 0:
+          return s[start .. pos]
+    inc pos
+  ""
