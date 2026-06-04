@@ -9,8 +9,8 @@ Windows 桌面常驻悬浮窗，用于实时查看 Claude Code CLI 和 Codex CLI
 - Claude / Codex 双区域显示
 - 执行状态、单次耗时、单次 Token、单次缓存、今日累计
 - 运行中 Token / 缓存以三点动画显示，结束后显示最终数值
-- 无边框、始终置顶、可拖动、透明度设置
-- 系统托盘显示 / 隐藏 / 退出
+- 无边框、可选置顶、可拖动、透明度设置
+- 系统托盘显示 / 隐藏 / 开机自启动 / 退出
 - 弹窗模式和任务栏悬浮模式切换
 - 位置记忆、配置热更新
 - 文件变化驱动刷新，空闲低频工作集回收
@@ -141,7 +141,8 @@ config\config.example.json
 ```json
 {
   "refreshInterval": 1000,
-  "alwaysOnTop": true,
+  "alwaysOnTop": false,
+  "respectFullscreenWindows": true,
   "clickThrough": false,
   "opacity": 0.85,
   "windowX": -1,
