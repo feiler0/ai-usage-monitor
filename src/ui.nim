@@ -188,6 +188,9 @@ proc drawMetricRow(hdc: HDC, label, value: string, x: int32, y: int32) =
   drawTextStr(hdc, label, x, y, gUi.hFont, labelColor)
   drawTextStr(hdc, value, x + LabelWidth, y, gUi.hFontMono, valueColor)
 
+proc drawSmallTag(hdc: HDC, text: string, x: int32, y: int32, color: COLORREF) =
+  drawTextStr(hdc, text, x, y, gUi.hFontTiny, color)
+
 proc formatMiniCount(value: int64): string =
   let absValue = abs(value)
   if absValue >= 1_000_000_000:
@@ -323,13 +326,11 @@ proc drawDeepSeekSection(hdc: HDC, data: DeepSeekData, x: int32, y: int32): int3
   var cy = y
   drawTextStr(hdc, "DeepSeek", x, cy, gUi.hFontHeader, COLOR_TEXT_BRIGHT)
   drawTextStr(hdc, formatBillTime(data.billUpdatedMs), x + 116, cy + 1, gUi.hFont, COLOR_TEXT)
+  if data.billStale:
+    drawSmallTag(hdc, "未落账", x + 206, cy + 5, COLOR_CODEX)
   cy += HEADER_HEIGHT + 2
 
   let indent: int32 = x + 6
-  if data.billStale:
-    drawMetricRow(hdc, "账单", "未落账", indent, cy)
-    cy += ROW_HEIGHT
-
   drawMetricRow(hdc, "费用", formatDeepSeekMoney(data.todayCost, "USD"), indent, cy)
   cy += ROW_HEIGHT
 
@@ -337,6 +338,8 @@ proc drawDeepSeekSection(hdc: HDC, data: DeepSeekData, x: int32, y: int32): int3
     if data.balanceOk: formatDeepSeekMoney(data.balance, data.balanceCurrency)
     else: "-"
   drawMetricRow(hdc, "余额", balanceText, indent, cy)
+  if data.balanceOk:
+    drawSmallTag(hdc, "实时", indent + 132, cy + 5, COLOR_GREEN)
   cy += ROW_HEIGHT
 
   drawMetricRow(hdc, "Token", formatCount(data.todayTokens), indent, cy)
