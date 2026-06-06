@@ -365,13 +365,16 @@ proc drawCompactStatus(hdc: HDC, label: string, data: MonitorData, x: int32) =
 
 proc drawCompactDeepSeek(hdc: HDC, x: int32) =
   let data = gUi.monitor.deepseekData
+  let balanceText =
+    if data.balanceOk: formatDeepSeekMoney(data.balance, data.balanceCurrency)
+    else: "-"
   drawTextStr(hdc, "DS", x, 10, gUi.hFont, COLOR_TEXT_BRIGHT)
   let dotColor =
     if data.billStale: COLOR_CODEX
     elif data.balanceOk: COLOR_DEEPSEEK
     else: COLOR_GRAY
   drawStatusDot(hdc, x + 30, 16, dotColor)
-  drawTextStr(hdc, formatDeepSeekMoney(data.todayCost, "USD"), x + 44, 10, gUi.hFontMono, COLOR_VALUE)
+  drawTextStr(hdc, balanceText, x + 44, 10, gUi.hFontMono, COLOR_VALUE)
 
 proc drawCompactWindow(hdc: HDC, rc: RECT) =
   drawGlassPanel(hdc, rc, 12)
