@@ -7,3 +7,6 @@ bin           = @["main"]
 
 requires "nim >= 2.0.0"
 requires "winim >= 3.9.0"
+
+task test, "Run parser fixture tests":
+  exec "nim c -r tests/test_parsers.nim"

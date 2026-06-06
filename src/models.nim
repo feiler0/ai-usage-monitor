@@ -69,4 +69,6 @@ type
     balanceAvailable*: bool
     balanceOk*: bool
     billUpdatedMs*: int64
+    sessionUpdatedMs*: int64
+    billStale*: bool
     weekTokens*: array[7, int64]

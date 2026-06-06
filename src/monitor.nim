@@ -18,12 +18,14 @@ type
     claudeWatcher*: DirectoryWatcher
     codexWatcher*: DirectoryWatcher
     deepseekWatcher*: DirectoryWatcher
+    deepseekSessionWatcher*: DirectoryWatcher
     latestCodexJsonl*: string
     lastCodexAggregateMs*: int64
     lastDeepSeekBalanceMs*: int64
     claudeDirty*: bool
     codexDirty*: bool
     deepseekDirty*: bool
+    deepseekSessionDirty*: bool
 
 const
   CodexAggregateFallbackMs = 3000'i64
@@ -50,6 +52,7 @@ proc initMonitor*(config: AppConfig, stats: AppStats): Monitor =
     claudeDirty: true,
     codexDirty: true,
     deepseekDirty: true,
+    deepseekSessionDirty: true,
   )
   result.claudeWatcher = initDirectoryWatcher(getProjectTimeDir())
   let codexRoot =
@@ -57,6 +60,7 @@ proc initMonitor*(config: AppConfig, stats: AppStats): Monitor =
     else: getCodexSessionsRoot()
   result.codexWatcher = initDirectoryWatcher(codexRoot)
   result.deepseekWatcher = initDirectoryWatcher(getHomeDir() / ".reasonix", recursive = false)
+  result.deepseekSessionWatcher = initDirectoryWatcher(getReasonixSessionsDir(), recursive = false)
 
 proc resetDailyIfNeeded(m: Monitor) =
   let today = todayKey()
@@ -156,12 +160,22 @@ proc refreshDeepSeekData*(m: Monitor) =
     let previousCurrency = m.deepseekData.balanceCurrency
     let previousAvailable = m.deepseekData.balanceAvailable
     let previousOk = m.deepseekData.balanceOk
+    let previousSessionUpdatedMs = m.deepseekData.sessionUpdatedMs
     m.deepseekData = parseUsageStats()
     m.deepseekData.balance = previousBalance
     m.deepseekData.balanceCurrency = previousCurrency
     m.deepseekData.balanceAvailable = previousAvailable
     m.deepseekData.balanceOk = previousOk
+    m.deepseekData.sessionUpdatedMs = previousSessionUpdatedMs
     m.deepseekDirty = false
+
+  if m.deepseekSessionDirty:
+    m.deepseekData.sessionUpdatedMs = findLatestReasonixSessionMs()
+    m.deepseekSessionDirty = false
+  m.deepseekData.billStale =
+    m.deepseekData.sessionUpdatedMs > 0 and
+    m.deepseekData.billUpdatedMs > 0 and
+    m.deepseekData.sessionUpdatedMs > m.deepseekData.billUpdatedMs
 
   if nowMs - m.lastDeepSeekBalanceMs >= BalanceRefreshMs or m.lastDeepSeekBalanceMs == 0:
     refreshBalance(m.deepseekData)
@@ -176,6 +190,8 @@ proc refreshAll*(m: Monitor) =
     m.codexDirty = true
   if changed(m.deepseekWatcher):
     m.deepseekDirty = true
+  if changed(m.deepseekSessionWatcher):
+    m.deepseekSessionDirty = true
   refreshClaudeData(m)
   refreshCodexData(m)
   refreshDeepSeekData(m)
@@ -184,6 +200,7 @@ proc closeMonitor*(m: Monitor) =
   close(m.claudeWatcher)
   close(m.codexWatcher)
   close(m.deepseekWatcher)
+  close(m.deepseekSessionWatcher)
 
 proc applyConfig*(m: Monitor, config: AppConfig) =
   let oldCodexRoot =

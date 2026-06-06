@@ -1,0 +1,4 @@
+{"timestamp":"2026-06-06T01:00:00.000Z","type":"event_msg","payload":{"type":"user_message"}}
+{"timestamp":"2026-06-06T01:00:10.000Z","type":"event_msg","payload":{"type":"token_count","last_token_usage":{"cached_input_tokens":200,"total_tokens":1200},"total_token_usage":{"cached_input_tokens":900,"total_tokens":5000}}}
+{"timestamp":"2026-06-06T01:00:20.000Z","type":"event_msg","payload":{"type":"agent_message","phase":"final_answer"}}
+

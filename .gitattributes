@@ -1,6 +1,9 @@
 * text=auto
+.gitattributes text eol=lf
 *.nim text eol=lf
 *.md text eol=lf
 *.json text eol=lf
+*.jsonl text eol=lf
 *.nimble text eol=lf
+*.png binary
 *.bat text eol=crlf

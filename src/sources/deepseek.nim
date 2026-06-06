@@ -1,6 +1,6 @@
 ## DeepSeek usage and balance data source
 
-import std/[os, strutils]
+import std/[os, strutils, times]
 import ../models
 import ../jsonlite
 
@@ -17,6 +17,19 @@ const
 
 proc getReasonixUsagePath*(): string =
   getHomeDir() / UsageFile
+
+proc getReasonixSessionsDir*(): string =
+  getEnv("APPDATA") / "reasonix" / "sessions"
+
+proc findLatestReasonixSessionMs*(dir: string = getReasonixSessionsDir()): int64 =
+  if not dirExists(dir):
+    return 0
+  var latest: Time
+  for file in walkFiles(dir / "*.jsonl"):
+    let modified = getLastModificationTime(file)
+    if result == 0 or modified > latest:
+      latest = modified
+      result = modified.toUnix() * 1000
 
 proc currencySymbol(code: string): string =
   case code.toUpperAscii()

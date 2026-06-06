@@ -21,7 +21,7 @@ const
 
   # 尺寸常量
   WIN_WIDTH = 260
-  WIN_HEIGHT = 456
+  WIN_HEIGHT = 476
   COMPACT_WIDTH = 390
   COMPACT_HEIGHT = 38
   PADDING = 14
@@ -107,6 +107,8 @@ proc deepSeekHash(data: DeepSeekData): int =
   h = h !& hash(data.balanceAvailable)
   h = h !& hash(data.balanceOk)
   h = h !& hash(data.billUpdatedMs)
+  h = h !& hash(data.sessionUpdatedMs)
+  h = h !& hash(data.billStale)
   for value in data.weekTokens:
     h = h !& hash(value)
   result = cast[int](h)
@@ -324,6 +326,10 @@ proc drawDeepSeekSection(hdc: HDC, data: DeepSeekData, x: int32, y: int32): int3
   cy += HEADER_HEIGHT + 2
 
   let indent: int32 = x + 6
+  if data.billStale:
+    drawMetricRow(hdc, "账单", "未落账", indent, cy)
+    cy += ROW_HEIGHT
+
   drawMetricRow(hdc, "费用", formatDeepSeekMoney(data.todayCost, "USD"), indent, cy)
   cy += ROW_HEIGHT
 
@@ -357,7 +363,11 @@ proc drawCompactStatus(hdc: HDC, label: string, data: MonitorData, x: int32) =
 proc drawCompactDeepSeek(hdc: HDC, x: int32) =
   let data = gUi.monitor.deepseekData
   drawTextStr(hdc, "DS", x, 10, gUi.hFont, COLOR_TEXT_BRIGHT)
-  drawStatusDot(hdc, x + 30, 16, if data.balanceOk: COLOR_DEEPSEEK else: COLOR_GRAY)
+  let dotColor =
+    if data.billStale: COLOR_CODEX
+    elif data.balanceOk: COLOR_DEEPSEEK
+    else: COLOR_GRAY
+  drawStatusDot(hdc, x + 30, 16, dotColor)
   drawTextStr(hdc, formatDeepSeekMoney(data.todayCost, "USD"), x + 44, 10, gUi.hFontMono, COLOR_VALUE)
 
 proc drawCompactWindow(hdc: HDC, rc: RECT) =
