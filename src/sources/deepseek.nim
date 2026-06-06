@@ -60,6 +60,7 @@ proc parseUsageStats*(path: string = getReasonixUsagePath()): DeepSeekData =
 
   if result.billUpdatedMs <= 0:
     return
+  result.hasBillingData = true
 
   # Use the latest billing day with data, so stale-but-valid Reasonix usage
   # does not render as all zero after midnight.

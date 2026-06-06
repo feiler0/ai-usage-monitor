@@ -68,6 +68,7 @@ type
     balanceCurrency*: string
     balanceAvailable*: bool
     balanceOk*: bool
+    hasBillingData*: bool
     billUpdatedMs*: int64
     sessionUpdatedMs*: int64
     billStale*: bool

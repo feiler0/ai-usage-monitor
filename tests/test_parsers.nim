@@ -29,7 +29,14 @@ suite "parser fixtures":
 
   test "DeepSeek usage fixture":
     let data = parseUsageStats(FixtureRoot / "deepseek" / "usage.jsonl")
+    check data.hasBillingData == true
     check data.todayTokens == 4500
     check data.todayCost == 1.0
     check data.cacheHitRate > 24.9
     check data.cacheHitRate < 25.1
+
+  test "DeepSeek missing usage fixture":
+    let data = parseUsageStats(FixtureRoot / "deepseek" / "missing.jsonl")
+    check data.hasBillingData == false
+    check data.billUpdatedMs == 0
+    check data.todayTokens == 0

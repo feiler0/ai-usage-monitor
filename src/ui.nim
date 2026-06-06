@@ -106,6 +106,7 @@ proc deepSeekHash(data: DeepSeekData): int =
   h = h !& hash(data.balanceCurrency)
   h = h !& hash(data.balanceAvailable)
   h = h !& hash(data.balanceOk)
+  h = h !& hash(data.hasBillingData)
   h = h !& hash(data.billUpdatedMs)
   h = h !& hash(data.sessionUpdatedMs)
   h = h !& hash(data.billStale)
@@ -202,12 +203,15 @@ proc formatMiniCount(value: int64): string =
   else:
     $value
 
-proc drawTrendRow(hdc: HDC, label: string, values: array[7, int64], x: int32, y: int32) =
+proc drawTrendRow(hdc: HDC, label: string, values: array[7, int64], x: int32, y: int32, hasData: bool = true) =
   const LabelWidth = 58'i32
   const VisibleDays = 5
   const SlotWidth = 31'i32
   const BarWidth = 16'i32
   drawTextStr(hdc, label, x, y, gUi.hFont, COLOR_TEXT)
+  if not hasData:
+    drawTextStr(hdc, "-", x + LabelWidth, y, gUi.hFontMono, COLOR_VALUE)
+    return
   var maxValue: int64 = 0
   for i in 7 - VisibleDays ..< 7:
     let value = values[i]
@@ -334,21 +338,21 @@ proc drawDeepSeekSection(hdc: HDC, data: DeepSeekData, x: int32, y: int32): int3
   cy += HEADER_HEIGHT + 2
 
   let indent: int32 = x + 6
-  drawMetricRow(hdc, "账单", formatBillTime(data.billUpdatedMs), indent, cy)
-  if data.billStale:
+  drawMetricRow(hdc, "账单", if data.hasBillingData: formatBillTime(data.billUpdatedMs) else: "无数据", indent, cy)
+  if data.hasBillingData and data.billStale:
     drawSmallTag(hdc, "未落账", indent + 168, cy + 5, COLOR_CODEX)
   cy += ROW_HEIGHT
 
-  drawMetricRow(hdc, "费用", formatDeepSeekMoney(data.todayCost, "USD"), indent, cy)
+  drawMetricRow(hdc, "费用", if data.hasBillingData: formatDeepSeekMoney(data.todayCost, "USD") else: "-", indent, cy)
   cy += ROW_HEIGHT
 
-  drawMetricRow(hdc, "Token", formatCount(data.todayTokens), indent, cy)
+  drawMetricRow(hdc, "Token", if data.hasBillingData: formatCount(data.todayTokens) else: "-", indent, cy)
   cy += ROW_HEIGHT
 
-  drawMetricRow(hdc, "命中", formatPercent(data.cacheHitRate), indent, cy)
+  drawMetricRow(hdc, "命中", if data.hasBillingData: formatPercent(data.cacheHitRate) else: "-", indent, cy)
   cy += ROW_HEIGHT + 8
 
-  drawTrendRow(hdc, "趋势", data.weekTokens, indent, cy)
+  drawTrendRow(hdc, "趋势", data.weekTokens, indent, cy, data.hasBillingData)
   cy += ROW_HEIGHT + 44
   result = cy
 
