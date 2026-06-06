@@ -24,8 +24,6 @@ proc normalize(config: var AppConfig) =
 proc defaultConfig*(): AppConfig =
   result = AppConfig(
     refreshInterval: DefaultRefreshInterval,
-    alwaysOnTop: false,
-    respectFullscreenWindows: true,
     clickThrough: false,
     opacity: DefaultOpacity,
     windowX: -1,
@@ -43,8 +41,6 @@ proc loadConfig*(path: string = DefaultConfigPath): AppConfig =
     if content.len == 0:
       return result
     result.refreshInterval = getJsonInt(content, "refreshInterval", result.refreshInterval)
-    result.alwaysOnTop = getJsonBool(content, "alwaysOnTop", result.alwaysOnTop)
-    result.respectFullscreenWindows = getJsonBool(content, "respectFullscreenWindows", result.respectFullscreenWindows)
     result.clickThrough = getJsonBool(content, "clickThrough", result.clickThrough)
     result.opacity = getJsonFloat(content, "opacity", result.opacity)
     result.windowX = getJsonInt(content, "windowX", result.windowX)
@@ -60,8 +56,6 @@ proc saveConfig*(config: AppConfig, path: string = DefaultConfigPath) =
   normalize(cfg)
   let content = "{\n" &
     "  \"refreshInterval\": " & $cfg.refreshInterval & ",\n" &
-    "  \"alwaysOnTop\": " & $cfg.alwaysOnTop & ",\n" &
-    "  \"respectFullscreenWindows\": " & $cfg.respectFullscreenWindows & ",\n" &
     "  \"clickThrough\": " & $cfg.clickThrough & ",\n" &
     "  \"opacity\": " & $cfg.opacity & ",\n" &
     "  \"windowX\": " & $cfg.windowX & ",\n" &

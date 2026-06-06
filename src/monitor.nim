@@ -1,10 +1,12 @@
 ## 文件监控模块
 
+import std/os
 import models
 import filewatch
-import sources/[claude, codex]
+import sources/[claude, codex, deepseek]
 import processutil
 import timeutil
+import memoryutil
 
 type
   Monitor* = ref object
@@ -12,11 +14,19 @@ type
     stats*: AppStats
     claudeData*: MonitorData
     codexData*: MonitorData
+    deepseekData*: DeepSeekData
     claudeWatcher*: DirectoryWatcher
     codexWatcher*: DirectoryWatcher
+    deepseekWatcher*: DirectoryWatcher
     latestCodexJsonl*: string
+    lastCodexAggregateMs*: int64
+    lastDeepSeekBalanceMs*: int64
     claudeDirty*: bool
     codexDirty*: bool
+    deepseekDirty*: bool
+
+const
+  CodexAggregateFallbackMs = 3000'i64
 
 proc clearTurn(data: var MonitorData) =
   data.status = tsIdle
@@ -39,12 +49,14 @@ proc initMonitor*(config: AppConfig, stats: AppStats): Monitor =
     codexData: MonitorData(tool: ttCodex, name: "Codex", status: tsIdle),
     claudeDirty: true,
     codexDirty: true,
+    deepseekDirty: true,
   )
   result.claudeWatcher = initDirectoryWatcher(getProjectTimeDir())
   let codexRoot =
     if config.codexSessionDir.len > 0: config.codexSessionDir
     else: getCodexSessionsRoot()
   result.codexWatcher = initDirectoryWatcher(codexRoot)
+  result.deepseekWatcher = initDirectoryWatcher(getHomeDir() / ".reasonix", recursive = false)
 
 proc resetDailyIfNeeded(m: Monitor) =
   let today = todayKey()
@@ -127,12 +139,34 @@ proc refreshCodexData*(m: Monitor) =
   else:
     clearTurn(m.codexData)
 
-  if wasCodexDirty or m.codexData.todayTokens == 0:
+  let nowMs = nowUnixMs()
+  if wasCodexDirty or m.codexData.todayTokens == 0 or
+      nowMs - m.lastCodexAggregateMs >= CodexAggregateFallbackMs:
     let todayTokens = aggregateTodayCodexTokens(sessionsRoot)
-    m.codexData.todayTokens = max(m.codexData.todayTokens, todayTokens.tokens)
-    m.codexData.todayCacheTokens = max(m.codexData.todayCacheTokens, todayTokens.cache)
+    m.codexData.todayTokens = todayTokens.tokens
+    m.codexData.todayCacheTokens = todayTokens.cache
+    m.lastCodexAggregateMs = nowMs
   m.stats.codexTodayTokens = m.codexData.todayTokens
   m.stats.codexTodayCacheTokens = m.codexData.todayCacheTokens
+
+proc refreshDeepSeekData*(m: Monitor) =
+  let nowMs = nowUnixMs()
+  if m.deepseekDirty:
+    let previousBalance = m.deepseekData.balance
+    let previousCurrency = m.deepseekData.balanceCurrency
+    let previousAvailable = m.deepseekData.balanceAvailable
+    let previousOk = m.deepseekData.balanceOk
+    m.deepseekData = parseUsageStats()
+    m.deepseekData.balance = previousBalance
+    m.deepseekData.balanceCurrency = previousCurrency
+    m.deepseekData.balanceAvailable = previousAvailable
+    m.deepseekData.balanceOk = previousOk
+    m.deepseekDirty = false
+
+  if nowMs - m.lastDeepSeekBalanceMs >= BalanceRefreshMs or m.lastDeepSeekBalanceMs == 0:
+    refreshBalance(m.deepseekData)
+    m.lastDeepSeekBalanceMs = nowMs
+    trimWorkingSet()
 
 proc refreshAll*(m: Monitor) =
   resetDailyIfNeeded(m)
@@ -140,12 +174,16 @@ proc refreshAll*(m: Monitor) =
     m.claudeDirty = true
   if changed(m.codexWatcher):
     m.codexDirty = true
+  if changed(m.deepseekWatcher):
+    m.deepseekDirty = true
   refreshClaudeData(m)
   refreshCodexData(m)
+  refreshDeepSeekData(m)
 
 proc closeMonitor*(m: Monitor) =
   close(m.claudeWatcher)
   close(m.codexWatcher)
+  close(m.deepseekWatcher)
 
 proc applyConfig*(m: Monitor, config: AppConfig) =
   let oldCodexRoot =

@@ -1,6 +1,6 @@
 ## Codex CLI 数据源解析
 
-import std/[os, strutils]
+import std/[os, strutils, times]
 import ../models
 import ../jsonlite
 import ../timeutil
@@ -22,15 +22,14 @@ proc getCodexSessionsRoot*(): string =
 proc findLatestCodexJsonl*(root: string): string =
   result = ""
   if not dirExists(root): return
-  let dir = todayPath(root)
-  if not dirExists(dir): return
-  var latestName = ""
-  for file in walkDirRec(dir):
+  var latestTime: Time
+  for file in walkDirRec(root):
     let name = extractFilename(file)
     if not (name.startsWith("rollout-") and name.endsWith(".jsonl")):
       continue
-    if name > latestName:
-      latestName = name
+    let modified = getLastModificationTime(file)
+    if result.len == 0 or modified > latestTime:
+      latestTime = modified
       result = file
 
 proc parseCodexTurnState*(jsonlPath: string): CodexTurnState =
@@ -82,15 +81,13 @@ proc parseCodexTurnState*(jsonlPath: string): CodexTurnState =
   else:
     result.durationSec = 0
 
-proc findTodayCodexJsonls*(root: string): seq[string] =
+proc findCodexJsonls*(root: string): seq[string] =
   result = @[]
   if not dirExists(root): return
-  let todayDir = todayPath(root)
-  if dirExists(todayDir):
-    for file in walkDirRec(todayDir):
-      let name = extractFilename(file)
-      if name.startsWith("rollout-") and name.endsWith(".jsonl"):
-        result.add(file)
+  for file in walkDirRec(root):
+    let name = extractFilename(file)
+    if name.startsWith("rollout-") and name.endsWith(".jsonl"):
+      result.add(file)
 
 proc parseCodexTokenCount*(jsonlPath: string): CodexTokenInfo =
   if not fileExists(jsonlPath):
@@ -119,8 +116,26 @@ proc parseCodexTokenCount*(jsonlPath: string): CodexTokenInfo =
 
 proc aggregateTodayCodexTokens*(root: string): tuple[tokens, cache: int64] =
   result = (0, 0)
-  let files = findTodayCodexJsonls(root)
+  let files = findCodexJsonls(root)
+  let today = todayKey()
   for file in files:
-    let info = parseCodexTokenCount(file)
-    result.tokens += info.totalTokens
-    result.cache += info.cachedInputTokens
+    try:
+      var f: File
+      if not open(f, file, fmRead):
+        continue
+      defer: close(f)
+
+      var line: string
+      while readLine(f, line):
+        if not line.contains("\"token_count\""):
+          continue
+        let tsText = getJsonString(line, "timestamp")
+        let ts = parseIsoUnixMs(tsText)
+        if localDateKeyFromUnixMs(ts) != today:
+          continue
+        let lastPart = getJsonObject(line, "last_token_usage")
+        if lastPart.len > 0:
+          result.tokens += getJsonInt64(lastPart, "total_tokens")
+          result.cache += getJsonInt64(lastPart, "cached_input_tokens")
+    except:
+      discard

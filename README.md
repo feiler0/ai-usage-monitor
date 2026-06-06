@@ -1,15 +1,16 @@
 # AI Usage Monitor
 
-Windows 桌面常驻悬浮窗，用于实时查看 Claude Code CLI 和 Codex CLI 的状态、单次 Token、缓存 Token、今日累计 Token。
+Windows 桌面常驻悬浮窗，用于实时查看 Claude Code CLI、Codex CLI 的状态与 Token 数据，并显示 DeepSeek 今日费用、余额、Token、缓存命中率和近一周消耗趋势。
 
 项目重点是数据准确、稳定、低资源占用。当前实现使用 Nim、Win32 API、GDI、ReadDirectoryChangesW 和轻量 JSON 字段读取，不依赖 Electron、Python、Node、Chromium、WebView、SQLite。
 
 ## 功能
 
-- Claude / Codex 双区域显示
+- Claude / Codex / DeepSeek 分区显示
 - 执行状态、单次耗时、单次 Token、单次缓存、今日累计
+- DeepSeek 今日费用、剩余余额、今日 Token、缓存命中率、近一周趋势
 - 运行中 Token / 缓存以三点动画显示，结束后显示最终数值
-- 无边框、可选置顶、可拖动、透明度设置
+- 无边框、低层级显示、可拖动、透明度设置
 - 系统托盘显示 / 隐藏 / 开机自启动 / 退出
 - 弹窗模式和任务栏悬浮模式切换
 - 位置记忆、配置热更新
@@ -60,6 +61,40 @@ Windows 桌面常驻悬浮窗，用于实时查看 Claude Code CLI 和 Codex CLI
 - `agent_message` + `phase=final_answer`
 - `token_count`
 
+### DeepSeek
+
+账单数据来自 Reasonix 已落账的本地 usage 文件：
+
+```text
+%USERPROFILE%\.reasonix\usage.jsonl
+```
+
+主要字段：
+
+- `costUsd`
+- `promptTokens`
+- `completionTokens`
+- `cacheHitTokens`
+- `cacheMissTokens`
+
+该文件用于计算费用、Token、缓存命中率和趋势图。若 Reasonix 桌面端仍在写入会话文件，但没有同步更新 `usage.jsonl`，监控器只会显示最后一次已落账数据，不会根据会话文本估算费用或 Token。
+
+会话更新时间可来自 Reasonix 桌面端会话目录：
+
+```text
+%APPDATA%\reasonix\sessions\
+```
+
+该目录只用于判断会话是否比账单更新，不作为费用或 Token 统计来源。
+
+余额接口：
+
+```text
+GET https://api.deepseek.com/user/balance
+```
+
+API Key 只从本机配置读取，不写入日志、不显示明文。
+
 ## 项目结构
 
 ```text
@@ -79,7 +114,8 @@ ai-usage-monitor/
 │  ├─ tray.nim              # 系统托盘
 │  └─ sources/
 │     ├─ claude.nim         # Claude 数据源
-│     └─ codex.nim          # Codex 数据源
+│     ├─ codex.nim          # Codex 数据源
+│     └─ deepseek.nim       # DeepSeek usage 和余额数据源
 ├─ build/
 │  └─ build.bat             # Release 构建脚本
 ├─ config/
@@ -141,8 +177,6 @@ config\config.example.json
 ```json
 {
   "refreshInterval": 1000,
-  "alwaysOnTop": false,
-  "respectFullscreenWindows": true,
   "clickThrough": false,
   "opacity": 0.85,
   "windowX": -1,
@@ -160,7 +194,8 @@ config\config.example.json
 
 - 只支持 Windows。
 - 依赖 Claude Code / Codex 本地文件格式保持兼容。
-- 不实现费用、本月统计、请求次数、平均响应时间等预留字段。
+- Claude / Codex 暂不实现费用、本月统计、请求次数、平均响应时间等预留字段。
+- DeepSeek 历史用量依赖 Reasonix `usage.jsonl` 已落账记录；如果 Reasonix 客户端停止写入该文件，只能显示最后一次已落账数据。
 
 ## License
 

@@ -6,8 +6,8 @@ import models
 import monitor
 import config
 import filewatch
-import memoryutil
 import tray
+import sources/deepseek
 
 when defined(windows):
   import winim/lean
@@ -21,14 +21,13 @@ const
 
   # 尺寸常量
   WIN_WIDTH = 260
-  WIN_HEIGHT = 246
-  COMPACT_WIDTH = 328
+  WIN_HEIGHT = 456
+  COMPACT_WIDTH = 390
   COMPACT_HEIGHT = 38
   PADDING = 14
   ROW_HEIGHT = 19
   HEADER_HEIGHT = 25
   SECTION_GAP = 6
-  IDLE_TRIM_TICKS = 5
   # 颜色定义
   COLOR_BG_TOP = RGB(36, 39, 44)
   COLOR_BG_BOTTOM = RGB(16, 18, 22)
@@ -39,6 +38,7 @@ const
   COLOR_VALUE = RGB(235, 242, 246)
   COLOR_GREEN = RGB(42, 217, 139)
   COLOR_CODEX = RGB(238, 167, 74)
+  COLOR_DEEPSEEK = RGB(101, 93, 255)
   COLOR_GRAY = RGB(111, 118, 128)
   COLOR_SEPARATOR = RGB(52, 58, 66)
 
@@ -51,17 +51,16 @@ type
     hFont*: HFONT
     hFontMono*: HFONT
     hFontHeader*: HFONT
+    hFontTiny*: HFONT
     monitor*: Monitor
     mode*: UiMode
     draggingCompact*: bool
     dragOffsetX*: int32
     configWatcher*: DirectoryWatcher
     animationFrame*: int
-    idleTrimTicks*: int
     lastClaudeHash*: int
     lastCodexHash*: int
-    fullscreenForeground*: bool
-    hiddenForFullscreen*: bool
+    lastDeepSeekHash*: int
 
 # 全局 UI 上下文
 var gUi: UiContext
@@ -79,10 +78,12 @@ proc initGdi(): void =
   gUi.hFont = createFont("Microsoft YaHei UI", 19, false)
   gUi.hFontMono = createFont("Cascadia Mono", 19, false)
   gUi.hFontHeader = createFont("Microsoft YaHei UI", 21, true)
+  gUi.hFontTiny = createFont("Cascadia Mono", 12, false)
 proc cleanupGdi() =
   if gUi.hFont != 0: DeleteObject(gUi.hFont)
   if gUi.hFontMono != 0: DeleteObject(gUi.hFontMono)
   if gUi.hFontHeader != 0: DeleteObject(gUi.hFontHeader)
+  if gUi.hFontTiny != 0: DeleteObject(gUi.hFontTiny)
 
 proc dataHash(data: MonitorData): int =
   ## 计算数据简单哈希，用于判断是否需要重绘
@@ -92,7 +93,22 @@ proc dataHash(data: MonitorData): int =
   h = h !& hash(data.sessionTokens)
   h = h !& hash(data.sessionCacheTokens)
   h = h !& hash(data.todayTokens)
+  h = h !& hash(data.todayCacheTokens)
   h = h !& hash(data.answering)
+  result = cast[int](h)
+
+proc deepSeekHash(data: DeepSeekData): int =
+  var h: Hash = 0
+  h = h !& hash(int(data.todayCost * 10000))
+  h = h !& hash(data.todayTokens)
+  h = h !& hash(int(data.cacheHitRate * 100))
+  h = h !& hash(int(data.balance * 100))
+  h = h !& hash(data.balanceCurrency)
+  h = h !& hash(data.balanceAvailable)
+  h = h !& hash(data.balanceOk)
+  h = h !& hash(data.billUpdatedMs)
+  for value in data.weekTokens:
+    h = h !& hash(value)
   result = cast[int](h)
 
 proc mixColor(a, b: COLORREF, t: float): COLORREF =
@@ -170,6 +186,44 @@ proc drawMetricRow(hdc: HDC, label, value: string, x: int32, y: int32) =
   drawTextStr(hdc, label, x, y, gUi.hFont, labelColor)
   drawTextStr(hdc, value, x + LabelWidth, y, gUi.hFontMono, valueColor)
 
+proc formatMiniCount(value: int64): string =
+  let absValue = abs(value)
+  if absValue >= 1_000_000_000:
+    formatFloat(value.float / 1_000_000_000'f64, ffDecimal, 1) & "B"
+  elif absValue >= 1_000_000:
+    formatFloat(value.float / 1_000_000'f64, ffDecimal, 1) & "M"
+  elif absValue >= 1_000:
+    formatFloat(value.float / 1_000'f64, ffDecimal, 0) & "K"
+  else:
+    $value
+
+proc drawTrendRow(hdc: HDC, label: string, values: array[7, int64], x: int32, y: int32) =
+  const LabelWidth = 58'i32
+  const VisibleDays = 5
+  const SlotWidth = 31'i32
+  const BarWidth = 16'i32
+  drawTextStr(hdc, label, x, y, gUi.hFont, COLOR_TEXT)
+  var maxValue: int64 = 0
+  for i in 7 - VisibleDays ..< 7:
+    let value = values[i]
+    if value > maxValue:
+      maxValue = value
+  let baseX = x + LabelWidth + 6
+  let baseY = y + 54
+  for i in 0 ..< VisibleDays:
+    let value = values[7 - VisibleDays + i]
+    let barHeight =
+      if maxValue > 0: max(2'i32, int32(value.float / maxValue.float * 24.0))
+      else: 2'i32
+    let slotLeft = baseX + int32(i) * SlotWidth
+    let barLeft = slotLeft + (SlotWidth - BarWidth) div 2
+    var textRc = RECT(left: slotLeft - 4, top: y + 8, right: slotLeft + SlotWidth + 4, bottom: y + 22)
+    drawTextCentered(hdc, formatMiniCount(value), textRc, gUi.hFontTiny, COLOR_TEXT)
+    let brush = CreateSolidBrush(if i == VisibleDays - 1: COLOR_DEEPSEEK else: RGB(67, 74, 88))
+    var rc = RECT(left: barLeft, top: baseY - barHeight, right: barLeft + BarWidth, bottom: baseY)
+    FillRect(hdc, rc.addr, brush)
+    DeleteObject(brush)
+
 proc formatCount(value: int64): string =
   let absValue = abs(value)
   if absValue >= 1_000_000_000:
@@ -180,6 +234,29 @@ proc formatCount(value: int64): string =
     result = formatFloat(value.float / 1_000'f64, ffDecimal, 1) & "K"
   else:
     result = $value
+
+proc formatPercent(value: float): string =
+  formatFloat(value, ffDecimal, 1) & "%"
+
+proc formatBillTime(ms: int64): string =
+  if ms <= 0:
+    return "-- --:--"
+  when defined(windows):
+    let fileMs = uint64(ms + 11_644_473_600_000'i64) * 10_000'u64
+    var ft = FILETIME(
+      dwLowDateTime: DWORD(fileMs and 0xFFFF_FFFF'u64),
+      dwHighDateTime: DWORD(fileMs shr 32)
+    )
+    var localFt: FILETIME
+    var st: SYSTEMTIME
+    if FileTimeToLocalFileTime(ft.addr, localFt.addr) != 0 and
+        FileTimeToSystemTime(localFt.addr, st.addr) != 0:
+      let mo = if st.wMonth < 10: "0" & $st.wMonth else: $st.wMonth
+      let dd = if st.wDay < 10: "0" & $st.wDay else: $st.wDay
+      let hh = if st.wHour < 10: "0" & $st.wHour else: $st.wHour
+      let mm = if st.wMinute < 10: "0" & $st.wMinute else: $st.wMinute
+      return mo & "-" & dd & " " & hh & ":" & mm
+  "-- --:--"
 
 proc formatDuration(secTotal: int64): string =
   if secTotal <= 0:
@@ -240,6 +317,32 @@ proc drawSection(hdc: HDC, data: MonitorData, x: int32, y: int32): int32 =
 
   result = cy
 
+proc drawDeepSeekSection(hdc: HDC, data: DeepSeekData, x: int32, y: int32): int32 =
+  var cy = y
+  drawTextStr(hdc, "DeepSeek", x, cy, gUi.hFontHeader, COLOR_TEXT_BRIGHT)
+  drawTextStr(hdc, formatBillTime(data.billUpdatedMs), x + 116, cy + 1, gUi.hFont, COLOR_TEXT)
+  cy += HEADER_HEIGHT + 2
+
+  let indent: int32 = x + 6
+  drawMetricRow(hdc, "费用", formatDeepSeekMoney(data.todayCost, "USD"), indent, cy)
+  cy += ROW_HEIGHT
+
+  let balanceText =
+    if data.balanceOk: formatDeepSeekMoney(data.balance, data.balanceCurrency)
+    else: "-"
+  drawMetricRow(hdc, "余额", balanceText, indent, cy)
+  cy += ROW_HEIGHT
+
+  drawMetricRow(hdc, "Token", formatCount(data.todayTokens), indent, cy)
+  cy += ROW_HEIGHT
+
+  drawMetricRow(hdc, "命中", formatPercent(data.cacheHitRate), indent, cy)
+  cy += ROW_HEIGHT + 8
+
+  drawTrendRow(hdc, "趋势", data.weekTokens, indent, cy)
+  cy += ROW_HEIGHT + 44
+  result = cy
+
 proc drawModeButton(hdc: HDC) =
   var rc = RECT(left: WIN_WIDTH - 34, top: 9, right: WIN_WIDTH - 12, bottom: 29)
   drawTextCentered(hdc, "_", rc, gUi.hFontHeader, COLOR_TEXT)
@@ -251,10 +354,17 @@ proc drawCompactStatus(hdc: HDC, label: string, data: MonitorData, x: int32) =
   drawStatusDot(hdc, x + 52, 16, dotColor)
   drawTextStr(hdc, formatCount(data.todayTokens), x + 66, 10, gUi.hFontMono, COLOR_VALUE)
 
+proc drawCompactDeepSeek(hdc: HDC, x: int32) =
+  let data = gUi.monitor.deepseekData
+  drawTextStr(hdc, "DS", x, 10, gUi.hFont, COLOR_TEXT_BRIGHT)
+  drawStatusDot(hdc, x + 30, 16, if data.balanceOk: COLOR_DEEPSEEK else: COLOR_GRAY)
+  drawTextStr(hdc, formatDeepSeekMoney(data.todayCost, "USD"), x + 44, 10, gUi.hFontMono, COLOR_VALUE)
+
 proc drawCompactWindow(hdc: HDC, rc: RECT) =
   drawGlassPanel(hdc, rc, 12)
   drawCompactStatus(hdc, "Claude", gUi.monitor.claudeData, 16)
-  drawCompactStatus(hdc, "Codex", gUi.monitor.codexData, 160)
+  drawCompactStatus(hdc, "Codex", gUi.monitor.codexData, 138)
+  drawCompactDeepSeek(hdc, 266)
   var restoreRc = RECT(left: COMPACT_WIDTH - 34, top: 8, right: COMPACT_WIDTH - 10, bottom: 30)
   drawTextCentered(hdc, "▴", restoreRc, gUi.hFontHeader, COLOR_TEXT)
 
@@ -298,7 +408,11 @@ proc paintWindow(hwnd: HWND) =
 
   # 绘制 Codex 区域
   let codexStartY = claudeEndY + SECTION_GAP + 5
-  discard drawSection(memDc, gUi.monitor.codexData, PADDING + 2, codexStartY)
+  let codexEndY = drawSection(memDc, gUi.monitor.codexData, PADDING + 2, codexStartY)
+  drawSeparator(memDc, 0, codexEndY + SECTION_GAP, WIN_WIDTH)
+
+  let deepSeekStartY = codexEndY + SECTION_GAP + 5
+  discard drawDeepSeekSection(memDc, gUi.monitor.deepseekData, PADDING + 2, deepSeekStartY)
   drawModeButton(memDc)
 
   # Blit 到屏幕
@@ -310,50 +424,12 @@ proc paintWindow(hwnd: HWND) =
   DeleteDC(memDc)
   EndPaint(hwnd, ps.addr)
 
-proc foregroundIsFullscreen(hwnd: HWND): bool =
-  let fg = GetForegroundWindow()
-  if fg == 0 or fg == hwnd or IsWindowVisible(fg) == 0:
-    return false
-  var fgRc: RECT
-  if GetWindowRect(fg, fgRc.addr) == 0:
-    return false
-  let mon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST)
-  var info: MONITORINFO
-  info.cbSize = DWORD(sizeof(MONITORINFO))
-  if GetMonitorInfoW(mon, info.addr) == 0:
-    return false
-  let mr = info.rcMonitor
-  result = fgRc.left <= mr.left and fgRc.top <= mr.top and
-    fgRc.right >= mr.right and fgRc.bottom >= mr.bottom
-
-proc windowInsertAfter(config: AppConfig): HWND =
-  if config.alwaysOnTop and (gUi.isNil or not gUi.fullscreenForeground):
-    HWND_TOPMOST
-  else:
-    HWND_NOTOPMOST
-
-proc refreshWindowLevelPolicy(hwnd: HWND) =
-  if gUi.isNil:
-    return
-  let nextFullscreen = gUi.monitor.config.respectFullscreenWindows and foregroundIsFullscreen(hwnd)
-  if nextFullscreen != gUi.fullscreenForeground:
-    gUi.fullscreenForeground = nextFullscreen
-    SetWindowPos(hwnd, windowInsertAfter(gUi.monitor.config), 0, 0, 0, 0,
-      SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE)
-  if nextFullscreen:
-    if IsWindowVisible(hwnd) != 0:
-      gUi.hiddenForFullscreen = true
-      ShowWindow(hwnd, SW_HIDE)
-  elif gUi.hiddenForFullscreen:
-    gUi.hiddenForFullscreen = false
-    ShowWindow(hwnd, SW_SHOWNA)
-
 proc updateWindowStyle(hwnd: HWND, config: AppConfig) =
   ## 更新窗口样式（置顶、透明度、穿透）
   var exStyle = GetWindowLongW(hwnd, GWL_EXSTYLE)
 
   # 置顶
-  SetWindowPos(hwnd, windowInsertAfter(config), 0, 0, 0, 0,
+  SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0,
     SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE)
 
   # 透明度
@@ -412,7 +488,7 @@ proc applyWindowMode(hwnd: HWND) =
     x = pt.x
     y = pt.y
 
-  SetWindowPos(hwnd, windowInsertAfter(gUi.monitor.config), x, y, width, height, SWP_NOACTIVATE)
+  SetWindowPos(hwnd, HWND_BOTTOM, x, y, width, height, SWP_NOACTIVATE)
   var r: RECT
   GetClientRect(hwnd, r.addr)
   let hRgn = CreateRoundRectRgn(0, 0, r.right + 1, r.bottom + 1, 12, 12)
@@ -465,7 +541,7 @@ proc WndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.s
   case msg
   of WM_CREATE:
     SetWindowLongW(hwnd, GWL_EXSTYLE,
-      GetWindowLongW(hwnd, GWL_EXSTYLE) or WS_EX_LAYERED or WS_EX_TOOLWINDOW)
+      GetWindowLongW(hwnd, GWL_EXSTYLE) or WS_EX_LAYERED or WS_EX_TOOLWINDOW or WS_EX_NOACTIVATE)
     SetLayeredWindowAttributes(hwnd, 0, (gUi.monitor.config.opacity * 255).int32.byte, LWA_ALPHA)
     SetTimer(hwnd, cast[UINT_PTR](1), cast[UINT](gUi.monitor.config.refreshInterval), nil)
     return 0
@@ -477,22 +553,20 @@ proc WndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.s
   of WM_TIMER:
     if wParam == 1:
       reloadConfigIfChanged(hwnd)
-      refreshWindowLevelPolicy(hwnd)
       refreshAll(gUi.monitor)
       let claudeHash = dataHash(gUi.monitor.claudeData)
       let codexHash = dataHash(gUi.monitor.codexData)
+      let deepseekHash = deepSeekHash(gUi.monitor.deepseekData)
       let animating = gUi.monitor.claudeData.answering or gUi.monitor.codexData.answering
       if animating:
         inc gUi.animationFrame
-        gUi.idleTrimTicks = 0
       else:
-        inc gUi.idleTrimTicks
-        if gUi.idleTrimTicks >= IDLE_TRIM_TICKS:
-          trimWorkingSet()
-          gUi.idleTrimTicks = 0
-      if claudeHash != gUi.lastClaudeHash or codexHash != gUi.lastCodexHash or animating:
+        discard
+      if claudeHash != gUi.lastClaudeHash or codexHash != gUi.lastCodexHash or
+          deepseekHash != gUi.lastDeepSeekHash or animating:
         gUi.lastClaudeHash = claudeHash
         gUi.lastCodexHash = codexHash
+        gUi.lastDeepSeekHash = deepseekHash
         InvalidateRect(hwnd, nil, TRUE)
     return 0
 
@@ -508,13 +582,6 @@ proc WndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.s
     if event == WM_RBUTTONDOWN or event == WM_RBUTTONUP or
        event == WM_CONTEXTMENU or event == NIN_KEYSELECT:
       showTrayMenu(hwnd)
-    # 左键: 切换窗口显示
-    elif event == WM_LBUTTONUP or event == WM_LBUTTONDBLCLK or
-         event == NIN_SELECT:
-      if IsWindowVisible(hwnd) != 0:
-        ShowWindow(hwnd, SW_HIDE)
-      else:
-        ShowWindow(hwnd, SW_SHOW)
     return 0
 
   of WM_LBUTTONDOWN:
@@ -543,7 +610,7 @@ proc WndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.s
       var newX = pt.x - gUi.dragOffsetX
       if newX < work.left: newX = work.left
       if newX > work.right - COMPACT_WIDTH: newX = work.right - COMPACT_WIDTH
-      SetWindowPos(hwnd, windowInsertAfter(gUi.monitor.config), newX, compactY(),
+      SetWindowPos(hwnd, HWND_BOTTOM, newX, compactY(),
         COMPACT_WIDTH, COMPACT_HEIGHT, SWP_NOACTIVATE)
       return 0
 
@@ -623,7 +690,7 @@ proc createWindow*(monitor: Monitor): HWND =
 
   let height: int32 = calcWindowHeight()
 
-  let exStyle: DWORD = WS_EX_LAYERED or WS_EX_TOOLWINDOW
+  let exStyle: DWORD = WS_EX_LAYERED or WS_EX_TOOLWINDOW or WS_EX_NOACTIVATE
   result = CreateWindowExW(
     exStyle,
     WINDOW_CLASS, WINDOW_TITLE,
@@ -640,6 +707,7 @@ proc createWindow*(monitor: Monitor): HWND =
   let hRgn = CreateRoundRectRgn(0, 0, rc.right + 1, rc.bottom + 1, 12, 12)
   SetWindowRgn(result, hRgn, TRUE)
 
-  ShowWindow(result, SW_SHOW)
+  ShowWindow(result, SW_SHOWNOACTIVATE)
+  SetWindowPos(result, HWND_BOTTOM, 0, 0, 0, 0,
+    SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE)
   UpdateWindow(result)
-  trimWorkingSet()

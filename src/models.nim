@@ -2,7 +2,7 @@
 
 type
   ToolType* = enum
-    ttClaude, ttCodex
+    ttClaude, ttCodex, ttDeepSeek
 
   ToolStatus* = enum
     tsIdle, tsRunning
@@ -21,8 +21,6 @@ type
 
   AppConfig* = object
     refreshInterval*: int
-    alwaysOnTop*: bool
-    respectFullscreenWindows*: bool
     clickThrough*: bool
     opacity*: float
     windowX*: int
@@ -61,3 +59,14 @@ type
     startMs*: int64
     lastEventMs*: int64
     durationSec*: int64
+
+  DeepSeekData* = object
+    todayCost*: float
+    todayTokens*: int64
+    cacheHitRate*: float
+    balance*: float
+    balanceCurrency*: string
+    balanceAvailable*: bool
+    balanceOk*: bool
+    billUpdatedMs*: int64
+    weekTokens*: array[7, int64]

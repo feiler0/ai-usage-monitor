@@ -22,6 +22,9 @@ proc todayKey*(): string =
   let t = todayParts()
   pad4(t.year) & "-" & pad2(t.month) & "-" & pad2(t.day)
 
+proc dateKey*(year, month, day: int): string =
+  pad4(year) & "-" & pad2(month) & "-" & pad2(day)
+
 proc todayPath*(root: string): string =
   let t = todayParts()
   root / pad4(t.year) / pad2(t.month) / pad2(t.day)
@@ -36,6 +39,24 @@ proc nowUnixMs*(): int64 =
     result = int64(ticks div 10_000'u64) - 11_644_473_600_000'i64
   else:
     result = 0
+
+proc localDateKeyFromUnixMs*(unixMs: int64): string =
+  when defined(windows):
+    if unixMs <= 0:
+      return ""
+    let ticks = (uint64(unixMs + 11_644_473_600_000'i64)) * 10_000'u64
+    var utcFt: FILETIME
+    utcFt.dwLowDateTime = cast[DWORD](ticks and 0xFFFF_FFFF'u64)
+    utcFt.dwHighDateTime = cast[DWORD](ticks shr 32)
+    var localFt: FILETIME
+    var st: SYSTEMTIME
+    if FileTimeToLocalFileTime(utcFt.addr, localFt.addr) == 0:
+      return ""
+    if FileTimeToSystemTime(localFt.addr, st.addr) == 0:
+      return ""
+    result = dateKey(int(st.wYear), int(st.wMonth), int(st.wDay))
+  else:
+    result = ""
 
 proc toInt2(s: string, pos: int): int =
   if pos + 1 >= s.len: return -1

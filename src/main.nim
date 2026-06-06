@@ -1,10 +1,22 @@
 ## AI Usage Monitor — 主入口
 
-import models, config, storage, monitor, ui, tray
+import models, config, storage, monitor, ui, tray, memoryutil
 import sources/codex
 
 when defined(windows):
   import winim/lean
+
+const
+  SINGLE_INSTANCE_MUTEX = "Local\\AIUsageMonitor.SingleInstance"
+
+proc acquireSingleInstance(): HANDLE =
+  let name = newWideCString(SINGLE_INSTANCE_MUTEX)
+  result = CreateMutexW(nil, TRUE, name)
+  if result == 0:
+    return 0
+  if GetLastError() == ERROR_ALREADY_EXISTS:
+    CloseHandle(result)
+    return 0
 
 proc messageLoop(hwnd: HWND): void =
   var msg: MSG
@@ -13,6 +25,10 @@ proc messageLoop(hwnd: HWND): void =
     DispatchMessageW(msg.addr)
 
 proc WinMain(hInstance: HINSTANCE, hPrevInstance: HINSTANCE, lpCmdLine: LPWSTR, nCmdShow: int32): int32 {.stdcall.} =
+  let singleInstance = acquireSingleInstance()
+  if singleInstance == 0:
+    return 0
+
   var cfg = loadConfig()
   if cfg.codexSessionDir.len == 0:
     cfg.codexSessionDir = getCodexSessionsRoot()
@@ -23,6 +39,7 @@ proc WinMain(hInstance: HINSTANCE, hPrevInstance: HINSTANCE, lpCmdLine: LPWSTR, 
 
   let hwnd = createWindow(mon)
   discard createTrayIcon(hwnd)
+  trimWorkingSet()
   messageLoop(hwnd)
 
   removeTrayIcon()
@@ -30,6 +47,7 @@ proc WinMain(hInstance: HINSTANCE, hPrevInstance: HINSTANCE, lpCmdLine: LPWSTR, 
   saveConfig(mon.config)
   saveStats(mon.stats)
   closeMonitor(mon)
+  CloseHandle(singleInstance)
   return 0
 
 when isMainModule:

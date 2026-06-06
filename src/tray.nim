@@ -84,11 +84,11 @@ proc createMonitorIcon(): HICON =
   let oldBmp = SelectObject(mem, color)
 
   var rc = RECT(left: 0, top: 0, right: size, bottom: size)
-  let bg = CreateSolidBrush(RGB(22, 25, 30))
+  let bg = CreateSolidBrush(RGB(16, 18, 22))
   FillRect(mem, rc.addr, bg)
   DeleteObject(bg)
 
-  let border = CreatePen(PS_SOLID, 1, RGB(78, 87, 98))
+  let border = CreatePen(PS_SOLID, 1, RGB(72, 80, 90))
   let oldPen = SelectObject(mem, border)
   let oldBrush = SelectObject(mem, GetStockObject(HOLLOW_BRUSH))
   RoundRect(mem, 1, 1, size - 1, size - 1, 5, 5)
@@ -97,15 +97,35 @@ proc createMonitorIcon(): HICON =
   DeleteObject(border)
 
   let oldNullPen = SelectObject(mem, GetStockObject(NULL_PEN))
+
+  let linkPen = CreatePen(PS_SOLID, 1, RGB(88, 96, 108))
+  let oldLinkPen = SelectObject(mem, linkPen)
+  MoveToEx(mem, size div 3, size div 2, nil)
+  LineTo(mem, (size * 2) div 3, size div 2)
+  SelectObject(mem, oldLinkPen)
+  DeleteObject(linkPen)
+
+  let glowGreen = CreateSolidBrush(RGB(24, 92, 66))
+  let oldGlowGreen = SelectObject(mem, glowGreen)
+  Ellipse(mem, size div 3 - 5, size div 2 - 5, size div 3 + 5, size div 2 + 5)
+  SelectObject(mem, oldGlowGreen)
+  DeleteObject(glowGreen)
+
+  let glowAmber = CreateSolidBrush(RGB(104, 72, 36))
+  let oldGlowAmber = SelectObject(mem, glowAmber)
+  Ellipse(mem, (size * 2) div 3 - 5, size div 2 - 5, (size * 2) div 3 + 5, size div 2 + 5)
+  SelectObject(mem, oldGlowAmber)
+  DeleteObject(glowAmber)
+
   let green = CreateSolidBrush(RGB(42, 217, 139))
   let oldGreen = SelectObject(mem, green)
-  Ellipse(mem, size div 4 - 2, size div 2 - 3, size div 4 + 4, size div 2 + 3)
+  Ellipse(mem, size div 3 - 3, size div 2 - 3, size div 3 + 3, size div 2 + 3)
   SelectObject(mem, oldGreen)
   DeleteObject(green)
 
   let amber = CreateSolidBrush(RGB(238, 167, 74))
   let oldAmber = SelectObject(mem, amber)
-  Ellipse(mem, (size * 3) div 4 - 4, size div 2 - 3, (size * 3) div 4 + 2, size div 2 + 3)
+  Ellipse(mem, (size * 2) div 3 - 3, size div 2 - 3, (size * 2) div 3 + 3, size div 2 + 3)
   SelectObject(mem, oldAmber)
   DeleteObject(amber)
   SelectObject(mem, oldNullPen)
@@ -160,11 +180,10 @@ proc createTrayIcon*(hwnd: HWND): bool =
 
 proc showTrayMenu*(hwnd: HWND) =
   let hMenu = CreatePopupMenu()
-  AppendMenuW(hMenu, MF_STRING, cast[UINT_PTR](1), "显示/隐藏")
   let startupFlag = cast[UINT](if startupEnabled(): MF_STRING or MF_CHECKED else: MF_STRING)
-  AppendMenuW(hMenu, startupFlag, cast[UINT_PTR](2), "开机自启动")
+  AppendMenuW(hMenu, startupFlag, cast[UINT_PTR](1), "开机自启动")
   AppendMenuW(hMenu, MF_SEPARATOR, 0, nil)
-  AppendMenuW(hMenu, MF_STRING, cast[UINT_PTR](3), "退出")
+  AppendMenuW(hMenu, MF_STRING, cast[UINT_PTR](2), "退出")
 
   SetForegroundWindow(hwnd)
   var pt: POINT
@@ -172,16 +191,13 @@ proc showTrayMenu*(hwnd: HWND) =
 
   let cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD or TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nil)
   DestroyMenu(hMenu)
+  SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0,
+    SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE)
 
   case cmd
   of 1:
-    if IsWindowVisible(hwnd) != 0:
-      ShowWindow(hwnd, SW_HIDE)
-    else:
-      ShowWindow(hwnd, SW_SHOW)
-  of 2:
     discard setStartupEnabled(not startupEnabled())
-  of 3:
+  of 2:
     DestroyWindow(hwnd)
   else:
     discard
@@ -200,5 +216,6 @@ proc removeTrayIcon*() =
     gTray = nil
 
 proc restoreWindow*(hwnd: HWND) =
-  ShowWindow(hwnd, SW_SHOW)
-  SetForegroundWindow(hwnd)
+  ShowWindow(hwnd, SW_SHOWNOACTIVATE)
+  SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0,
+    SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE)
